@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Auto-fix formatting and run quick checks before every commit.
+#
+# Installed via `bash scripts/install-hooks.sh`.
+# Skip with `git commit --no-verify` (don't make this a habit — CI rejects unformatted code).
+
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+# Only act on staged Rust files. If the commit doesn't touch any .rs files,
+# don't burn cargo's startup cost.
+staged_rs=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.rs$' || true)
+if [ -z "$staged_rs" ]; then
+    exit 0
+fi
+
+echo "[pre-commit] Formatting staged Rust files…"
+
+# Format the WHOLE crate (rustfmt is too coarse to format only staged files
+# without breaking module boundaries). Then re-stage anything fmt rewrote so
+# the formatting fix lands in this same commit.
+cargo fmt
+git add -u -- '*.rs'
+
+# Quick syntax/type check — this catches obvious breakage before CI does.
+# Skip clippy/test (too slow for a pre-commit hook); CI runs them.
+if ! cargo check --quiet --all-targets 2>&1 | tail -20; then
+    echo "[pre-commit] cargo check failed — fix and retry. Use --no-verify only if you know why."
+    exit 1
+fi
+
+echo "[pre-commit] OK."
