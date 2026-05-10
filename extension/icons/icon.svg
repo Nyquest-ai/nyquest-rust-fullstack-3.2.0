@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="24" fill="#0a0b0e"/>
+  <text x="64" y="54" text-anchor="middle" font-family="monospace" font-weight="700" font-size="42" fill="#4fd1c5">NQ</text>
+  <text x="64" y="90" text-anchor="middle" font-family="sans-serif" font-weight="600" font-size="16" fill="#8b8d95">compress</text>
+</svg>

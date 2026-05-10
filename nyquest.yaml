@@ -1,0 +1,50 @@
+# Nyquest v3.2.0 Configuration
+# Default location: ./nyquest.yaml (next to the binary)
+
+compression_level: 0.5
+adaptive_mode: false
+normalize: true
+inject_boundaries: false
+host: "0.0.0.0"
+port: 5400
+log_metrics: true
+log_file: "logs/nyquest_metrics.jsonl"
+log_level: "INFO"
+token_counting: "estimate"
+request_timeout: 120
+allow_header_override: true
+
+# Context window optimization
+context_optimization: true
+context_max_input_tokens: 20000
+context_preserve_recent_turns: 3
+context_min_turns: 4
+
+# Response Compression
+compress_responses: true
+response_compression_age: 4
+
+# OpenClaw Agent Mode
+openclaw_mode: true
+openclaw_tool_prune_turns: 2
+openclaw_thought_prune_turns: 3
+openclaw_schema_minimize: true
+openclaw_dedup_errors: true
+openclaw_condense_views: true
+openclaw_cache_control: true
+openclaw_sliding_window: true
+openclaw_sliding_window_threshold: 0.80
+openclaw_sliding_window_max_tokens: 200000
+openclaw_sliding_window_preserve: 5
+
+# Semantic Compression (Qwen 2.5 1.5B via Ollama)
+semantic_enabled: true
+semantic_endpoint: "http://localhost:11434/v1/chat/completions"
+semantic_model: "qwen2.5:1.5b-instruct"
+semantic_timeout_ms: 3000
+semantic_history_threshold: 8000
+semantic_system_threshold: 4000
+semantic_dedup: false
+semantic_temperature: 0.0
+semantic_max_tokens: 2048
+semantic_fallback: "extractive"

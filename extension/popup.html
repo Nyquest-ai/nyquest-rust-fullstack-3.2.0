@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=360">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #0a0b0e;
+    --surface: #111318;
+    --border: #1e2028;
+    --teal: #4fd1c5;
+    --teal-dim: rgba(79, 209, 197, 0.15);
+    --green: #10b981;
+    --green-dim: rgba(16, 185, 129, 0.15);
+    --text: #e4e5e7;
+    --text-dim: #8b8d95;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --mono: Consolas, 'Cascadia Code', 'SF Mono', 'Fira Code', monospace;
+    --sans: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  body {
+    width: 360px;
+    min-height: 200px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-left { display: flex; align-items: center; gap: 8px; }
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px; font-weight: 700;
+    color: var(--teal); letter-spacing: -0.5px;
+  }
+  .version {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--text-dim); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+  }
+
+  .toggle-wrap { position: relative; width: 36px; height: 20px; }
+  .toggle-wrap input { opacity: 0; width: 0; height: 0; }
+  .toggle-track {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    background: #333; border-radius: 10px; cursor: pointer; transition: background 0.2s;
+  }
+  .toggle-track::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 16px; height: 16px; background: #fff;
+    border-radius: 50%; transition: transform 0.2s;
+  }
+  .toggle-wrap input:checked + .toggle-track { background: var(--teal); }
+  .toggle-wrap input:checked + .toggle-track::after { transform: translateX(16px); }
+
+  .mode-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .mode-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--teal); flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .mode-dot.proxy { background: var(--green); }
+  .mode-dot.off { background: #666; animation: none; }
+  .mode-label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .mode-label strong { color: var(--text); font-weight: 600; }
+
+  .section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .section-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 8px;
+  }
+
+  .level-row { display: flex; align-items: center; gap: 10px; }
+  .level-slider {
+    flex: 1; -webkit-appearance: none; appearance: none;
+    height: 4px; border-radius: 2px; background: var(--border); outline: none;
+  }
+  .level-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--teal); cursor: pointer; box-shadow: 0 0 8px rgba(79,209,197,0.4);
+  }
+  .level-value {
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+    color: var(--teal); min-width: 32px; text-align: right;
+  }
+  .level-labels { display: flex; justify-content: space-between; margin-top: 4px; }
+  .level-labels span { font-family: var(--mono); font-size: 9px; color: var(--text-dim); }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; transition: border-color 0.3s;
+  }
+  .stat-card.flash { border-color: var(--teal); }
+  .stat-num {
+    font-family: var(--mono); font-size: 18px; font-weight: 700;
+    color: var(--teal); line-height: 1.2;
+  }
+  .stat-num.green { color: var(--green); }
+  .stat-label { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+  .savings-bar-wrap { margin-top: 10px; }
+  .savings-bar-label { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .savings-bar-label span { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .savings-bar-label .pct { color: var(--green); font-weight: 700; }
+  .savings-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .savings-bar-fill {
+    height: 100%; background: linear-gradient(90deg, var(--teal), var(--green));
+    border-radius: 3px; width: 0%; transition: width 0.5s ease-out;
+  }
+
+  .feed {
+    max-height: 160px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+  }
+  .feed::-webkit-scrollbar { width: 4px; }
+  .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .feed-item {
+    display: flex; align-items: center; gap: 8px; padding: 6px 0;
+    border-bottom: 1px solid rgba(30,32,40,0.5);
+    animation: fadeIn 0.3s ease-out; font-family: var(--mono); font-size: 11px;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+  .feed-item:last-child { border-bottom: none; }
+  .feed-provider {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+    min-width: 48px; text-align: center;
+  }
+  .feed-provider.claude { background: var(--teal-dim); color: var(--teal); }
+  .feed-provider.chatgpt { background: rgba(16,163,127,0.15); color: #10a37f; }
+  .feed-provider.gemini { background: rgba(66,133,244,0.15); color: #4285f4; }
+  .feed-provider.openai { background: rgba(16,163,127,0.15); color: #10a37f; }
+  .feed-provider.anthropic { background: var(--teal-dim); color: var(--teal); }
+  .feed-provider.proxy { background: var(--green-dim); color: var(--green); }
+  .feed-detail { flex: 1; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .feed-detail strong { color: var(--text); font-weight: 600; }
+  .feed-savings { font-weight: 700; color: var(--green); flex-shrink: 0; }
+  .feed-savings.low { color: var(--amber); }
+  .feed-savings.none { color: var(--text-dim); }
+  .feed-empty { text-align: center; padding: 20px 0; color: var(--text-dim); font-size: 11px; }
+  .feed-empty .hint { font-family: var(--mono); font-size: 10px; margin-top: 4px; opacity: 0.6; }
+
+  .test-area { padding: 10px 16px 12px; border-bottom: 1px solid var(--border); }
+  .test-input {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: var(--mono); font-size: 11px;
+    padding: 8px 10px; resize: vertical; min-height: 48px; max-height: 100px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .test-input:focus { border-color: var(--teal); }
+  .test-input::placeholder { color: var(--text-dim); opacity: 0.5; }
+  .test-row { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+  .test-btn {
+    font-family: var(--mono); font-size: 10px; font-weight: 600;
+    color: var(--bg); background: var(--teal); border: none;
+    border-radius: 4px; padding: 4px 12px; cursor: pointer; transition: opacity 0.15s;
+  }
+  .test-btn:hover { opacity: 0.85; }
+  .test-result { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+  .test-result .saved { color: var(--green); font-weight: 700; }
+
+  .footer {
+    display: flex; align-items: center; justify-content: space-between; padding: 10px 16px;
+  }
+  .footer-link { font-size: 11px; color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
+  .footer-link:hover { color: var(--teal); }
+  .reset-btn {
+    font-family: var(--mono); font-size: 10px; color: var(--text-dim);
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .reset-btn:hover { border-color: var(--red); color: var(--red); }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="header-left">
+      <span class="logo">nyquest</span>
+      <span class="version">v1.0.0</span>
+    </div>
+    <label class="toggle-wrap">
+      <input type="checkbox" id="toggle-enabled" checked>
+      <span class="toggle-track"></span>
+    </label>
+  </div>
+
+  <div class="mode-bar">
+    <div class="mode-dot" id="mode-dot"></div>
+    <div class="mode-label" id="mode-label"><strong>Rules Only</strong> · 350+ patterns</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Compression Level</div>
+    <div class="level-row">
+      <input type="range" class="level-slider" id="level-slider" min="0" max="1" step="0.1" value="0.7">
+      <span class="level-value" id="level-value">0.7</span>
+    </div>
+    <div class="level-labels"><span>Gentle</span><span>Balanced</span><span>Aggressive</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Session Stats</div>
+    <div class="stats-grid">
+      <div class="stat-card" id="card-requests"><div class="stat-num" id="stat-requests">0</div><div class="stat-label">Requests</div></div>
+      <div class="stat-card" id="card-savings"><div class="stat-num green" id="stat-savings">0%</div><div class="stat-label">Avg Savings</div></div>
+      <div class="stat-card" id="card-orig"><div class="stat-num" id="stat-orig-tokens">0</div><div class="stat-label">Original Tokens</div></div>
+      <div class="stat-card" id="card-saved"><div class="stat-num green" id="stat-saved-tokens">0</div><div class="stat-label">Tokens Saved</div></div>
+    </div>
+    <div class="savings-bar-wrap">
+      <div class="savings-bar-label"><span>Compression ratio</span><span class="pct" id="bar-pct">0%</span></div>
+      <div class="savings-bar"><div class="savings-bar-fill" id="bar-fill"></div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Live Feed</div>
+    <div class="feed" id="feed">
+      <div class="feed-empty">No requests yet<div class="hint">Send a message on Claude, ChatGPT, or Gemini</div></div>
+    </div>
+  </div>
+
+  <div class="test-area">
+    <div class="section-label">Test Compression</div>
+    <textarea class="test-input" id="test-input" placeholder="Paste text here to test compression..."></textarea>
+    <div class="test-row">
+      <button class="test-btn" id="test-btn">Compress</button>
+      <span class="test-result" id="test-result"></span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="https://nyquest.ai" target="_blank" class="footer-link">nyquest.ai</a>
+    <button class="reset-btn" id="reset-btn">Reset Stats</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

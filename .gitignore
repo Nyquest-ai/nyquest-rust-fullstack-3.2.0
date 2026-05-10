@@ -1,0 +1,23 @@
+/target
+target/
+node_modules/
+logs/
+*.bak
+*.bak.*
+package-lock.json
+
+# Secrets & config
+.env
+*.env
+nyquest-prod.yaml
+*.pem
+*.key
+
+# Build / runtime junk that should never be committed
+node_modules/
+SEMANTIC_BENCHMARK_RESULTS.txt
+logs/
+
+# benchmark + test runtime output
+BENCHMARK_RESULTS.txt
+benchmark*.txt
