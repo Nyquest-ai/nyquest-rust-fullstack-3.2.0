@@ -1,0 +1,68 @@
+# Build artifacts — must be rebuilt inside the container
+target/
+dist/
+
+# VCS + IDE
+.git/
+.github/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+
+# Node tooling shipped with the site (not needed for the engine image)
+node_modules/
+package.json
+package-lock.json
+
+# Local secrets and runtime state — must NEVER land in the image
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.cer
+secrets/
+nyquest.local.yaml
+
+# Local logs (image carries an empty /app/logs)
+logs/
+*.log
+
+# Docs aren't needed at runtime; trims image size
+docs/
+extension/
+site/
+*.md
+!nyquest.yaml
+!Dockerfile
+
+# Bench artifacts the repo carries
+SEMANTIC_BENCHMARK_RESULTS.txt
+BENCHMARK_RESULTS.txt
+benchmark_natural.sh
+bench_semantic.sh
+deploy_semantic.sh
+live_test.sh
+benchmark.py
+benchmark_3way.py
+install.sh
+
+# Backups + archives
+*.bak
+*.bak.*
+*.archive
+backup-*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Dockerfile itself + its sidecars (already in build context, no need to ship)
+Dockerfile
+docker-compose.yml
+README_DOCKER.md
+.dockerignore
+.env.example
+scripts/

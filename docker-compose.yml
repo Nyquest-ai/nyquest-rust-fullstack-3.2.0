@@ -1,0 +1,96 @@
+# ──────────────────────────────────────────────────────────────────────────
+# Nyquest Compression Engine — docker-compose
+#
+# Two profiles:
+#   default (no profile)  →  local development / smoke testing
+#   prod                  →  production-style (pinned image tag, restart
+#                            policy, no source mounts, log persistence)
+#
+# Both services use `network_mode: host` to bypass docker-proxy. Measured
+# benchmark on an internal Ubuntu 24.04 host (2026-05-10):
+#   bridge network:  2,163 req/s single-thread,  13,980 req/s @ c=20
+#   host network:    8,266 req/s single-thread,  18,287 req/s @ c=20
+# Same engine, same compression results — the proxy was the entire delta.
+# Trade-off: the container shares the host's network namespace, so it
+# can't be on a docker bridge with other compose services. For this
+# one-service stack that's fine.
+#
+# Usage:
+#   bash scripts/build.sh                # build the image
+#   bash scripts/run-local.sh            # bring up the local stack
+#   bash scripts/smoke-test.sh           # verify /health + /admin endpoints
+#
+#   docker compose --profile prod up -d  # production-style
+#
+# All cache-tuning happens via .env (copy from .env.example).
+# ──────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Local / development service ────────────────────────────────────────
+  nyquest:
+    image: nyquest:3.2.0
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nyquest-engine
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Cache settings have defaults in the image; override here if .env
+      # isn't being used.
+      NYQUEST_CACHE_ENABLED: "${NYQUEST_CACHE_ENABLED:-true}"
+      NYQUEST_CACHE_CAPACITY: "${NYQUEST_CACHE_CAPACITY:-2048}"
+      NYQUEST_CACHE_MAX_ENTRY_SIZE: "${NYQUEST_CACHE_MAX_ENTRY_SIZE:-65536}"
+      RUST_LOG: "${RUST_LOG:-info}"
+    volumes:
+      # Persist metrics log on the host for inspection between restarts.
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:5400/health"]
+      interval: 15s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ── Production-style service (opt-in via --profile prod) ───────────────
+  # Identical to the dev service but:
+  #  - pinned image tag (no `build:` so it never silently rebuilds)
+  #  - read-only root filesystem (logs is the only writable mount)
+  #  - explicit memory + cpu reservations
+  #  - tighter restart policy
+  nyquest-prod:
+    profiles: ["prod"]
+    image: nyquest:3.2.0
+    container_name: nyquest-engine-prod
+    network_mode: host
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NYQUEST_CACHE_ENABLED: "${NYQUEST_CACHE_ENABLED:-true}"
+      NYQUEST_CACHE_CAPACITY: "${NYQUEST_CACHE_CAPACITY:-2048}"
+      NYQUEST_CACHE_MAX_ENTRY_SIZE: "${NYQUEST_CACHE_MAX_ENTRY_SIZE:-65536}"
+      RUST_LOG: "${RUST_LOG:-info}"
+    volumes:
+      - ./logs:/app/logs
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:5400/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.25"
+          memory: 96M
