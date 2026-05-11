@@ -74,6 +74,10 @@ pub struct NyquestConfig {
     pub semantic_temperature: f64,
     pub semantic_max_tokens: usize,
     pub semantic_fallback: String,
+    /// Optional Bearer token for hosted semantic endpoints (OpenRouter,
+    /// OpenAI-compatible). Empty for local Ollama. Set via NYQUEST_SEMANTIC_API_KEY
+    /// env var (preferred for secrets) or this yaml field (less secure).
+    pub semantic_api_key: String,
 
     // Per-provider settings
     #[serde(default)]
@@ -134,6 +138,7 @@ impl Default for NyquestConfig {
             semantic_temperature: 0.0,
             semantic_max_tokens: 2048,
             semantic_fallback: "extractive".to_string(),
+            semantic_api_key: String::new(),
             providers: HashMap::new(),
         }
     }
@@ -175,6 +180,7 @@ impl NyquestConfig {
             temperature: self.semantic_temperature,
             max_tokens: self.semantic_max_tokens,
             fallback: self.semantic_fallback.clone(),
+            api_key: self.semantic_api_key.clone(),
         }
     }
 }
@@ -229,6 +235,9 @@ pub fn load_config(config_path: Option<&str>) -> NyquestConfig {
     }
     if let Ok(val) = env::var("NYQUEST_SEMANTIC_MODEL") {
         cfg.semantic_model = val;
+    }
+    if let Ok(val) = env::var("NYQUEST_SEMANTIC_API_KEY") {
+        cfg.semantic_api_key = val;
     }
 
     cfg

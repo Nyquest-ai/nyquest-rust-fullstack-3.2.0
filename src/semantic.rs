@@ -40,6 +40,11 @@ pub struct SemanticConfig {
     pub temperature: f64,
     pub max_tokens: usize,
     pub fallback: String,
+    /// Optional Bearer token for hosted endpoints (OpenRouter, OpenAI-
+    /// compatible APIs, etc). Empty for local Ollama (no auth needed).
+    /// Read from NYQUEST_SEMANTIC_API_KEY env var or yaml field.
+    #[serde(default)]
+    pub api_key: String,
 }
 
 impl Default for SemanticConfig {
@@ -55,6 +60,7 @@ impl Default for SemanticConfig {
             temperature: 0.0,
             max_tokens: 2048,
             fallback: "extractive".into(),
+            api_key: String::new(),
         }
     }
 }
@@ -399,9 +405,23 @@ impl SemanticEngine {
             "stream": false
         });
 
+        // Add Bearer auth header when an api_key is configured. For local
+        // Ollama (the original target backend) the field is empty and no
+        // Authorization header is sent, preserving original behavior. For
+        // hosted endpoints (OpenRouter, OpenAI-compatible), the engine now
+        // authenticates correctly instead of getting silent HTTP 401 and
+        // falling back to extractive summarization.
+        let req = if self.config.api_key.is_empty() {
+            self.client.post(&self.config.endpoint).json(&body)
+        } else {
+            self.client
+                .post(&self.config.endpoint)
+                .bearer_auth(&self.config.api_key)
+                .json(&body)
+        };
         let resp = timeout(
             Duration::from_millis(self.config.timeout_ms),
-            self.client.post(&self.config.endpoint).json(&body).send(),
+            req.send(),
         )
         .await
         .map_err(|_| SemanticError::Timeout(self.config.timeout_ms))?
