@@ -48,7 +48,7 @@ fn print_rule_counts() {
         ("AI_OUTPUT_NOISE", 24),
         ("MARKDOWN_MINIFICATION", 18),
         ("SOURCE_CODE_COMPRESSION", 11),
-        ("CONTEXT_DEDUPLICATION", 7),
+        ("CONTEXT_DEDUPLICATION", 5),  // was 7; removed 2 backref-based sentence-dedup rules that triggered fancy_regex BacktrackLimitExceeded
         ("SEMANTIC_FORMATTING", 33),
         ("ANTI_NOISE", 20),
         ("CREDENTIAL_STRIP", 8),
@@ -58,7 +58,7 @@ fn print_rule_counts() {
         ("ADVERB_STRIP", 10),
         ("WHITESPACE_CLEANUP", 6),
     ];
-    const EXPECTED_TOTAL: usize = 532;
+    const EXPECTED_TOTAL: usize = 530;  // was 532; -2 from CONTEXT_DEDUPLICATION backref rule removal
     const EXPECTED_CATEGORIES: usize = 19;
 
     println!("\n=== Nyquest compression rule audit ===");

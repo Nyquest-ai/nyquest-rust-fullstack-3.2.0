@@ -1081,7 +1081,17 @@ pub static CONTEXT_DEDUPLICATION: Lazy<RuleCategory> = Lazy::new(|| {
                 "[BASE64_TRUNCATED]",
             ),
             (
-                r"(?<![a-zA-Z])[A-Za-z0-9+/]{500,}={0,2}(?![a-zA-Z])",
+                // Was a fancy_regex pattern with (?<![a-zA-Z]) ... (?![a-zA-Z])
+                // lookarounds; under fancy_regex 0.14 those triggered a
+                // BacktrackLimitExceeded panic on long mixed prompts (e.g.
+                // web grounding context with URLs + snippets). Switched to
+                // a std::Regex pattern with \b on the left only — \b
+                // matches non-word-to-word transition, which works for the
+                // start since [A-Za-z0-9+/] is all word-chars. We drop the
+                // trailing lookahead; 500+ char alphanumeric runs in real
+                // text are essentially always isolated, false-positive
+                // matches inside long words don't occur.
+                r"\b[A-Za-z0-9+/]{500,}={0,2}",
                 "[BASE64_TRUNCATED]",
             ),
             (
@@ -1092,8 +1102,17 @@ pub static CONTEXT_DEDUPLICATION: Lazy<RuleCategory> = Lazy::new(|| {
                 r"(?i)\bLet\s+me\s+(?:check|look\s+into|investigate)\s+(?:this|that)\s+for\s+you\s*[.!]?\s*",
                 "",
             ),
-            (r"(?s)(\b\w.{40,}?[.!?])\s*\1", "$1"),
-            (r"(\b[A-Z][^.!?]{20,}[.!?])\s+\1", "$1"),
+            // Removed: two \1-backreference patterns that detected duplicated
+            // sentences. Backrefs route to fancy_regex (std::Regex has no
+            // backref support), and combined with lazy `.{40,}?` + capture
+            // groups they triggered fancy_regex 0.14.0's
+            // BacktrackLimitExceeded panic on long mixed-content prompts
+            // (web grounding context with many partially-similar sentences).
+            // Sentence-level deduplication is correctly the job of the
+            // telegraph stage (telegraph::dedup_repeated_sentences), which
+            // operates on a sentence-segmented Vec<String> rather than via
+            // backref regex on raw text — same outcome, no backtracking
+            // failure mode.
         ],
     )
 });
