@@ -23,6 +23,12 @@ A drop-in HTTP proxy for LLM API traffic. Clients point at `localhost:5400` inst
 
 [**→ nyquest.ai**](https://nyquest.ai) &nbsp;·&nbsp; [**How It Works**](https://nyquest.ai/how-it-works) &nbsp;·&nbsp; [**Docs**](https://nyquest.ai/docs-page)
 
+<br />
+
+<img src="site/static/nvidia-inception.png" alt="NVIDIA Inception Program Member" width="260" />
+
+*Nyquest is a proud member of the [NVIDIA Inception Program](https://www.nvidia.com/en-us/startups/) for AI startups.*
+
 ---
 
 | 📊 22.6% Aggregate / 75% Semantic | ⚡ <2ms Cold Latency | ♻️ ~3,730× Cache Hit Speedup | 🌐 6 Providers | 🪨 532 Rules / 19 Categories | 🦀 Full Rust |
@@ -370,5 +376,9 @@ MIT OR Apache-2.0.
 <img src="site/static/logo.png" alt="Nyquest" width="48" />
 
 **[nyquest.ai](https://nyquest.ai)** &nbsp;·&nbsp; Built by [Nyquest AI](https://github.com/Nyquest-ai) &nbsp;·&nbsp; [Docs](https://nyquest.ai/docs-page)
+
+<br />
+
+<img src="site/static/nvidia-inception.png" alt="NVIDIA Inception Program Member" width="200" />
 
 </div>
