@@ -838,6 +838,10 @@ async fn proxy_chat_completions(
                         .status(status.as_u16())
                         .header("content-type", "text/event-stream")
                         .header("cache-control", "no-cache")
+                        .header("x-nyquest-original-tokens", original_tokens.to_string())
+                        .header("x-nyquest-optimized-tokens", optimized_tokens.to_string())
+                        .header("x-nyquest-savings-percent", format!("{:.1}",
+                            if original_tokens > 0 { (original_tokens.saturating_sub(optimized_tokens)) as f64 / original_tokens as f64 * 100.0 } else { 0.0 }))
                         .header("x-nyquest-request-id", &request_id)
                         .body(Body::from_stream(byte_stream))
                         .unwrap()
@@ -851,6 +855,10 @@ async fn proxy_chat_completions(
                         .status(status.as_u16())
                         .header("content-type", "text/event-stream")
                         .header("cache-control", "no-cache")
+                        .header("x-nyquest-original-tokens", original_tokens.to_string())
+                        .header("x-nyquest-optimized-tokens", optimized_tokens.to_string())
+                        .header("x-nyquest-savings-percent", format!("{:.1}",
+                            if original_tokens > 0 { (original_tokens.saturating_sub(optimized_tokens)) as f64 / original_tokens as f64 * 100.0 } else { 0.0 }))
                         .header("x-nyquest-request-id", &request_id)
                         .body(Body::from_stream(byte_stream))
                         .unwrap()
@@ -869,7 +877,11 @@ async fn proxy_chat_completions(
                         Response::builder()
                             .status(status.as_u16())
                             .header("content-type", "application/json")
-                            .header("x-nyquest-request-id", &request_id)
+                            .header("x-nyquest-original-tokens", original_tokens.to_string())
+                        .header("x-nyquest-optimized-tokens", optimized_tokens.to_string())
+                        .header("x-nyquest-savings-percent", format!("{:.1}",
+                            if original_tokens > 0 { (original_tokens.saturating_sub(optimized_tokens)) as f64 / original_tokens as f64 * 100.0 } else { 0.0 }))
+                        .header("x-nyquest-request-id", &request_id)
                             .body(Body::from(body_bytes))
                             .unwrap()
                     } else {
@@ -877,7 +889,11 @@ async fn proxy_chat_completions(
                         Response::builder()
                             .status(200)
                             .header("content-type", "application/json")
-                            .header("x-nyquest-request-id", &request_id)
+                            .header("x-nyquest-original-tokens", original_tokens.to_string())
+                        .header("x-nyquest-optimized-tokens", optimized_tokens.to_string())
+                        .header("x-nyquest-savings-percent", format!("{:.1}",
+                            if original_tokens > 0 { (original_tokens.saturating_sub(optimized_tokens)) as f64 / original_tokens as f64 * 100.0 } else { 0.0 }))
+                        .header("x-nyquest-request-id", &request_id)
                             .body(Body::from(
                                 serde_json::to_string(&openai_response).unwrap_or_default(),
                             ))
@@ -887,6 +903,10 @@ async fn proxy_chat_completions(
                     Response::builder()
                         .status(status.as_u16())
                         .header("content-type", "application/json")
+                        .header("x-nyquest-original-tokens", original_tokens.to_string())
+                        .header("x-nyquest-optimized-tokens", optimized_tokens.to_string())
+                        .header("x-nyquest-savings-percent", format!("{:.1}",
+                            if original_tokens > 0 { (original_tokens.saturating_sub(optimized_tokens)) as f64 / original_tokens as f64 * 100.0 } else { 0.0 }))
                         .header("x-nyquest-request-id", &request_id)
                         .body(Body::from(body_bytes))
                         .unwrap()
