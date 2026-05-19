@@ -22,6 +22,8 @@ use tokio::time::timeout;
 use tracing::{debug, info, warn};
 
 use md5::{Digest, Md5};
+use sha2::Digest as _Sha2Digest;
+use sha2;
 
 use crate::tokens::TokenCounter;
 
@@ -78,6 +80,9 @@ pub struct SemanticStats {
     pub cache_misses: usize,
     pub total_latency_ms: f64,
     pub call_count: usize,
+    /// Sprint 2 Task 8: total latency (ms) saved by cache hits this
+    /// process lifetime. Each hit adds the original miss latency.
+    pub cache_savings_ms: f64,
 }
 
 impl SemanticStats {
@@ -112,6 +117,7 @@ pub enum SemanticError {
 struct CacheEntry {
     result: Value,
     tokens_saved: usize,
+    original_latency_ms: u64,   // Sprint 2 Task 8: latency the miss paid; saved on every hit
     created_at: Instant,
 }
 
@@ -231,7 +237,7 @@ impl SemanticEngine {
         tc: &TokenCounter,
     ) -> Result<(Vec<Value>, usize), SemanticError> {
         let start = Instant::now();
-        let cache_key = self.cache_key(messages);
+        let cache_key = self.cache_key(messages, None, None);
 
         // Check cache
         {
@@ -239,6 +245,7 @@ impl SemanticEngine {
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.created_at.elapsed().as_secs() < CACHE_TTL_SECS {
                     self.stats.cache_hits += 1;
+                    self.stats.cache_savings_ms += entry.original_latency_ms as f64;
                     debug!(
                         "Semantic history cache HIT (saved {} tokens)",
                         entry.tokens_saved
@@ -274,7 +281,8 @@ impl SemanticEngine {
         });
         let result = vec![summary_msg, ack_msg];
 
-        self.update_cache(&cache_key, json!(result.clone()), tokens_saved)
+        let _stage_latency_ms = start.elapsed().as_millis() as u64;
+        self.update_cache(&cache_key, json!(result.clone()), tokens_saved, _stage_latency_ms)
             .await;
 
         let elapsed = start.elapsed().as_millis() as f64;
@@ -316,6 +324,7 @@ impl SemanticEngine {
             if let Some(entry) = cache.get(&cache_key) {
                 if entry.created_at.elapsed().as_secs() < CACHE_TTL_SECS {
                     self.stats.cache_hits += 1;
+                    self.stats.cache_savings_ms += entry.original_latency_ms as f64;
                     let text = entry.result.as_str().unwrap_or("").to_string();
                     return Ok((text, entry.tokens_saved));
                 }
@@ -334,7 +343,8 @@ impl SemanticEngine {
 
         let tokens_saved = input_tokens - output_tokens;
 
-        self.update_cache(&cache_key, json!(response.clone()), tokens_saved)
+        let _stage_latency_ms = start.elapsed().as_millis() as u64;
+        self.update_cache(&cache_key, json!(response.clone()), tokens_saved, _stage_latency_ms)
             .await;
 
         let elapsed = start.elapsed().as_millis() as f64;
@@ -468,18 +478,42 @@ impl SemanticEngine {
         parts.join("\n\n")
     }
 
-    fn cache_key(&self, messages: &[Value]) -> String {
-        let text = messages
-            .iter()
-            .map(|m| m.to_string())
-            .collect::<Vec<_>>()
-            .join("|");
-        let mut hasher = Md5::new();
-        hasher.update(text.as_bytes());
+    /// Sprint 2 Task 8: normalized prompt hash + workspace/user isolation.
+    ///
+    /// The original md5(messages.join("|")) was case-sensitive and
+    /// whitespace-sensitive, so trivial rephrasings produced different
+    /// keys and missed the cache. New form:
+    ///   sha256( lowercase(collapsed_whitespace(content)) || ws || user )
+    /// catches "What\'s my name?" / "what is my name " / "what is my name"
+    /// as the same key, and isolates entries per (workspace_id, user_id)
+    /// so two users in the same conversation context can\'t share each
+    /// other\'s condensation results.
+    fn cache_key(&self, messages: &[Value], workspace_id: Option<&str>, user_id: Option<&str>) -> String {
+        let mut normalized = String::new();
+        for m in messages {
+            if let Some(content) = m.get("content").and_then(|c| c.as_str()) {
+                if !normalized.is_empty() { normalized.push('|'); }
+                let mut prev_ws = false;
+                for ch in content.chars() {
+                    if ch.is_whitespace() {
+                        if !prev_ws { normalized.push(' '); prev_ws = true; }
+                    } else {
+                        for lc in ch.to_lowercase() { normalized.push(lc); }
+                        prev_ws = false;
+                    }
+                }
+            }
+        }
+        normalized.push('\u{1F}'); // unit separator — distinct from any user input
+        normalized.push_str(workspace_id.unwrap_or(""));
+        normalized.push('\u{1F}');
+        normalized.push_str(user_id.unwrap_or(""));
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(normalized.as_bytes());
         format!("hist:{:x}", hasher.finalize())
     }
 
-    async fn update_cache(&self, key: &str, result: Value, tokens_saved: usize) {
+    async fn update_cache(&self, key: &str, result: Value, tokens_saved: usize, original_latency_ms: u64) {
         let mut cache = CACHE.write().await;
         cache.retain(|_, v| v.created_at.elapsed().as_secs() < CACHE_TTL_SECS);
 
@@ -498,6 +532,7 @@ impl SemanticEngine {
             CacheEntry {
                 result,
                 tokens_saved,
+                original_latency_ms,
                 created_at: Instant::now(),
             },
         );
