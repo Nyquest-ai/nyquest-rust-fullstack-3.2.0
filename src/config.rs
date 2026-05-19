@@ -7,7 +7,13 @@ use std::env;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+// Sprint 1 Task 6 (2026-05-19): deny_unknown_fields catches yaml typos at
+// startup. Combined with #[serde(default)] which still provides defaults
+// for missing keys, so a minimal nyquest.yaml still loads cleanly — but
+// an UNKNOWN key (e.g. `semantic_history_threshhold` with an extra h)
+// now fails the load with a clear "unknown field, expected one of ..."
+// message instead of silently running with the default.
+#[serde(default, deny_unknown_fields)]
 pub struct NyquestConfig {
     pub compression_level: f64,
     pub adaptive_mode: bool,
@@ -193,8 +199,27 @@ pub fn load_config(config_path: Option<&str>) -> NyquestConfig {
         .unwrap_or_else(|| "nyquest.yaml".to_string());
 
     let mut cfg = if Path::new(&path).exists() {
-        let content = std::fs::read_to_string(&path).unwrap_or_default();
-        serde_yaml::from_str(&content).unwrap_or_default()
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("FATAL: cannot read config file {}: {}", &path, e);
+                std::process::exit(2);
+            }
+        };
+        // Sprint 1 Task 6: surface yaml errors loudly. The previous
+        //  silently fell back to defaults on ANY
+        // parse failure -- a typo in a numeric field, an unknown
+        // field (now caught by deny_unknown_fields), a malformed
+        // structure -- all invisible. Now we exit(2) with a clear
+        // message listing the file path and the serde error.
+        match serde_yaml::from_str(&content) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("FATAL: failed to parse config {}: {}", &path, e);
+                eprintln!("       (set NYQUEST_CONFIG to a different path to bypass, or fix the offending field; see NyquestConfig in src/config.rs for the valid field set.)");
+                std::process::exit(2);
+            }
+        }
     } else {
         NyquestConfig::default()
     };
