@@ -235,9 +235,11 @@ impl SemanticEngine {
         &mut self,
         messages: &[Value],
         tc: &TokenCounter,
+        workspace_id: Option<&str>,
+        user_id: Option<&str>,
     ) -> Result<(Vec<Value>, usize), SemanticError> {
         let start = Instant::now();
-        let cache_key = self.cache_key(messages, None, None);
+        let cache_key = self.cache_key(messages, workspace_id, user_id);
 
         // Check cache
         {
@@ -309,13 +311,32 @@ impl SemanticEngine {
         &mut self,
         system_text: &str,
         tc: &TokenCounter,
+        workspace_id: Option<&str>,
+        user_id: Option<&str>,
     ) -> Result<(String, usize), SemanticError> {
         let start = Instant::now();
         let input_tokens = tc.count_text_tokens(system_text);
 
+        // sha256 over normalized system text + workspace + user, matching
+        // the history-cache discipline so two users/workspaces never share
+        // a condensation (Hardening 1, 2026-05-20).
         let cache_key = {
-            let mut hasher = Md5::new();
-            hasher.update(system_text.as_bytes());
+            let mut normalized = String::new();
+            let mut prev_ws = false;
+            for ch in system_text.chars() {
+                if ch.is_whitespace() {
+                    if !prev_ws { normalized.push(' '); prev_ws = true; }
+                } else {
+                    for lc in ch.to_lowercase() { normalized.push(lc); }
+                    prev_ws = false;
+                }
+            }
+            normalized.push('\u{1F}');
+            normalized.push_str(workspace_id.unwrap_or(""));
+            normalized.push('\u{1F}');
+            normalized.push_str(user_id.unwrap_or(""));
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(normalized.as_bytes());
             format!("sys:{:x}", hasher.finalize())
         };
 
@@ -592,7 +613,7 @@ pub fn spawn_precompute(messages: Vec<Value>, config: SemanticConfig) {
             return;
         }
 
-        match engine.condense_history(&messages, &tc).await {
+        match engine.condense_history(&messages, &tc, None, None).await {
             Ok((_, saved)) => {
                 debug!("Background semantic precompute: saved {} tokens", saved);
             }

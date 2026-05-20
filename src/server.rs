@@ -259,6 +259,8 @@ async fn run_pipeline(
     level: f64,
     openclaw_enabled: bool,
     response_age_override: Option<usize>,
+    cache_workspace: Option<&str>,
+    cache_user: Option<&str>,
 ) -> (Value, usize, usize, CompressionStats, usize, usize) {
     let original_tokens = state.token_counter.count_request_tokens(body);
 
@@ -329,7 +331,7 @@ async fn run_pipeline(
             let sys_tokens = state.token_counter.count_text_tokens(&system_text);
             if sys_tokens >= state.config.semantic_system_threshold {
                 match sem
-                    .condense_system(&system_text, &state.token_counter)
+                    .condense_system(&system_text, &state.token_counter, cache_workspace, cache_user)
                     .await
                 {
                     Ok((condensed, saved)) => {
@@ -389,7 +391,7 @@ async fn run_pipeline(
                         .collect();
 
                     match sem
-                        .condense_history(&to_condense, &state.token_counter)
+                        .condense_history(&to_condense, &state.token_counter, cache_workspace, cache_user)
                         .await
                     {
                         Ok((condensed_msgs, saved)) => {
@@ -509,6 +511,11 @@ async fn proxy_messages(
     let header_map = headers_to_map(&headers);
 
     let header_level = header_map.get("x-nyquest-level").map(|s| s.as_str());
+    // Hardening 1: workspace + user for semantic-cache isolation. Both
+    // optional — managed/anon traffic without them just shares the
+    // global cache as before.
+    let cache_workspace = header_map.get("x-nyquest-workspace-id").map(|s| s.as_str());
+    let cache_user = header_map.get("x-nyquest-user-id").map(|s| s.as_str());
     let level = state.config.effective_level(header_level);
 
     let model = body
@@ -536,6 +543,8 @@ async fn proxy_messages(
             level,
             openclaw_enabled,
             response_age_override,
+            cache_workspace,
+            cache_user,
         )
         .await;
 
@@ -654,6 +663,8 @@ async fn proxy_chat_completions(
     let request_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
     let start = Instant::now();
     let header_map = headers_to_map(&headers);
+    let cache_workspace = header_map.get("x-nyquest-workspace-id").map(|s| s.as_str());
+    let cache_user = header_map.get("x-nyquest-user-id").map(|s| s.as_str());
 
     let header_level = header_map.get("x-nyquest-level").map(|s| s.as_str());
     let level = state.config.effective_level(header_level);
@@ -695,6 +706,8 @@ async fn proxy_chat_completions(
             level,
             openclaw_enabled,
             response_age_override,
+            cache_workspace,
+            cache_user,
         )
         .await;
         if r_count > 0 {
@@ -730,6 +743,8 @@ async fn proxy_chat_completions(
             level,
             openclaw_enabled,
             response_age_override,
+            cache_workspace,
+            cache_user,
         )
         .await;
         if r_count > 0 {
