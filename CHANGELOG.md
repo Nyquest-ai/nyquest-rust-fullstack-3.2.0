@@ -2,6 +2,103 @@
 
 All notable changes to the Nyquest compression engine. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog v3.2.3 — v3.2.6 (append to CHANGELOG.md above the v3.2.2 section)
+#
+# The four entries below match the prose density and section style of the
+# existing v3.2.0–v3.2.2 entries already in CHANGELOG.md on disk.
+# Each entry was reconstructed from the commit message body, not from
+# image metadata (the GHCR images for 3.2.3+ lost their OCI labels —
+# separate CI fix needed).
+#
+# Paste these in *above* the v3.2.2 heading so the file stays
+# newest-first.
+
+## [3.2.6] — 2026-05-20
+
+### Added
+- **Workspace and user header threading from proxy into semantic cache.** `src/server.rs::proxy_messages` and `proxy_chat_completions` now extract `X-Nyquest-Workspace-Id` and `X-Nyquest-User-Id` from incoming request headers and thread them into `run_pipeline` (two new params), which forwards them into both semantic-stage condense paths. Closes the cache-isolation gap that v3.2.5 set up but couldn't exercise (callers were still passing `(None, None)`).
+- `src/semantic.rs::condense_history` gains `(workspace_id, user_id) -> cache_key` parameters.
+- `src/semantic.rs::condense_system` folds `(workspace_id, user_id)` into its `sys:` cache key. The key is now `sha256(normalized_system_text + workspace + user)` — matches the history-cache discipline introduced in v3.2.5.
+
+### Effect
+- Two users (or two workspaces) can no longer share each other's semantic-stage condensations.
+- Managed and anonymous traffic without the headers falls back to the shared global cache, same as before (empty values = no isolation, same behavior as v3.2.5).
+
+### Testing
+- 30 / 30 pass (post-rename of older test counters).
+
+### Deployment
+- Image `ghcr.io/nyquest-ai/nyquest-engine:3.2.6` (digest `sha256:3e66b6cb89d24264df83dcb49b3179f8febbda0fb8de9c324846e0f14df30941`).
+- `:latest` re-pointed.
+
+---
+
+## [3.2.5] — 2026-05-19
+
+### Changed — semantic-stage cache improvements (Sprint 2 Task 8)
+
+Three changes shipped together:
+
+1. **Cache key: `md5(raw json)` → `sha256(normalized + workspace + user)`.** The old cache key was an `md5` over `messages.to_string().join("|")` — case-sensitive *and* whitespace-sensitive. So `"What's my name?"`, `"what is my name"`, and `"  whats my name  "` all produced different `md5` keys and missed the cache. New normalization: lowercase every char, collapse runs of whitespace to a single space, append unit-separator (`\x1F`)-delimited `workspace_id + user_id` at the tail, then `sha256` over the result. New signature: `cache_key(messages, workspace_id: Option<&str>, user_id: Option<&str>) -> String`. Current callers pass `(None, None)` — backwards-compatible. Full header plumbing is the v3.2.6 follow-up.
+
+2. **`CacheEntry` gains `original_latency_ms`.** Every cache *miss* records the latency it paid. Every subsequent *hit* adds that to a new running counter — answers "how much semantic-stage time did we save in the last hour?"
+
+3. **`SemanticStats` gains `cache_savings_ms: f64`.**
+
+### Dependency
+- `+ sha2 = "0.10"` added to `Cargo.toml`.
+- `md5` retained for the legacy `cache_key` signature (unused now, kept to avoid a cascading dep cleanup inside the same commit).
+
+### Verified post-deploy
+- Container reports `version: "3.2.5"` via `/health`.
+- BYOK smoke: 3 / 3 PASS (mock, openrouter, generic; 4 SKIP without keys).
+
+### Deployment
+- Image `ghcr.io/nyquest-ai/nyquest-engine:3.2.5` (digest `sha256:1c1228342926738f8e3ced8ca8928d2a28491eae512835328db5d6008b1e817a`).
+- `:latest` re-pointed.
+
+---
+
+## [3.2.4] — 2026-05-19
+
+### Added — strict config loader (Sprint 1 Task 6)
+
+Engine YAML previously silently dropped unknown keys, so a typo like `semantic_history_threshhold` (extra `h`) loaded the default value and the engine ran without anyone knowing. Two changes, one outcome — startup now LOUDLY fails on bad YAML instead of silently defaulting.
+
+- **`src/config.rs::NyquestConfig` now derives `#[serde(default, deny_unknown_fields)]`.** `default` still provides per-field defaults for *missing* keys (minimal YAML still loads). *Extra* keys now trigger:
+  ```
+  unknown field `semantic_history_threshhold`, expected one of
+    `compression_level`, `adaptive_mode`, `semantic_validation`, ... <full field list>
+  ```
+
+- **`load_config` no longer silently falls back to `default()`.** The old `serde_yaml::from_str(&content).unwrap_or_default()` swallowed every parse failure — typos in numeric fields, wrong types, malformed structures, AND the new `deny_unknown_fields` rejections. Replaced with an explicit match that prints `FATAL: failed to parse config <path>: <serde error>`, prints a help line pointing to `NyquestConfig` in `src/config.rs`, then `std::process::exit(2)`. Same treatment for file-read errors.
+
+### Verified
+- Container run with typo'd YAML exits with the descriptive FATAL line above.
+- Canonical good YAML boots normally — container reports `version: "3.2.4"`, `/health` returns ok, BYOK smoke 3 / 3 PASS.
+
+### Deployment
+- Image `ghcr.io/nyquest-ai/nyquest-engine:3.2.4` (digest `sha256:05f0f9aaa78568beedb6135fc134baa46e4ad8f5e0e24cf194b4cf463574e87c`).
+- `:latest` re-pointed.
+
+---
+
+## [3.2.3] — 2026-05-18
+
+### Added — compression telemetry on `/v1/chat/completions`
+
+The `/v1/messages` handler has emitted `x-nyquest-original-tokens`, `x-nyquest-optimized-tokens`, and `x-nyquest-savings-percent` on every response since v3.2.0. The `/v1/chat/completions` equivalent only emitted `x-nyquest-request-id`. That meant any consumer using the OpenAI-format endpoint — which is the bulk of upstream traffic, and all of the BYOK-through-engine traffic from `app-nyquest` — had no way to read the compression result off the response.
+
+- Adds the same four telemetry headers to all six `Response::builder()` sites in `src/server.rs::proxy_chat_completions`: success body, streaming start, two retry paths on conversion failures, and the two upstream-error pass-throughs.
+- `original_tokens` / `optimized_tokens` were already computed earlier in the function. This is a pure header-emission change.
+
+### Verified
+- Deployed as `nyquest:3.2.3-local` on prod; `curl` confirms all four telemetry headers now appear on chat-completions responses.
+
+### Deployment
+- Image `ghcr.io/nyquest-ai/nyquest-engine:3.2.3` (digest `sha256:10b6e44b54ba71321d82c706239680a9b48021bc4e6ab1339cfead44f160a5e9`).
+
+---
 ## [3.2.2] — 2026-05-11
 
 ### Added
