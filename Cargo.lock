@@ -1244,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "nyquest"
-version = "3.2.0"
+version = "3.2.7"
 dependencies = [
  "aes-gcm",
  "anyhow",
