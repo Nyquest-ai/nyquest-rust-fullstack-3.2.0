@@ -14,7 +14,6 @@
 use once_cell::sync::Lazy;
 use regex::{Regex, RegexSet};
 use std::borrow::Cow;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::warn;
 
@@ -101,31 +100,26 @@ impl Rule {
             }
             (result, did)
         } else if let Some(re) = &self.fancy_pattern {
-            // Defensive catch_unwind: fancy_regex 0.14.0 has an internal
-            // `unwrap()` on its `Err(BacktrackLimitExceeded)` Result at
-            // lib.rs:1073:45 — when its backtrack budget is exhausted on
-            // pathological input, the panic propagates up through this
-            // call and terminates the tokio worker task running the
-            // request. Wrapping in catch_unwind contains the blast
-            // radius: a panicking rule becomes a no-op (input returned
-            // unchanged, `did = false`) and the pipeline continues with
-            // remaining rules. The skip is logged at warn level with the
-            // rule id and pattern so the offending rule can be identified
-            // and patched at the source. std::Regex is non-backtracking
-            // by construction and cannot panic the same way, so its
-            // branch above does not need the wrapper.
+            // fancy_regex 0.14.0's `replace_all` is internally
+            // `try_replacen(...).unwrap()` at src/lib.rs:1073:45, so any rule
+            // whose backtrack budget is exhausted on pathological input would
+            // panic the worker. We call `try_replacen` directly: it returns
+            // `Err(BacktrackLimitExceeded | StackOverflow)` which we treat as
+            // "rule no-op for this input" -- input returned unchanged, `did =
+            // false`, pipeline continues with remaining rules. The skip is
+            // logged at warn level with the rule id, pattern, and the specific
+            // error variant so the offending rule can be identified and patched.
             //
-            // Caveat: this only catches unwinding panics. If release ever
-            // moves to `panic = "abort"`, catch_unwind becomes a no-op
-            // and the engine returns to the crash-on-panic behavior. The
-            // workspace currently uses the default (`unwind`).
-            let pattern_for_log = self.pattern_str.clone();
-            let id_for_log = self.id.clone();
-            let replacement = self.replacement.as_str();
-            let result = catch_unwind(AssertUnwindSafe(|| {
-                re.replace_all(text, replacement)
-            }));
-            match result {
+            // Was previously a `catch_unwind` wrapper around the panicking
+            // `replace_all`. Removed because (a) the panicking call is no longer
+            // made -- containment unnecessary; (b) `catch_unwind` is a no-op
+            // under `panic = "abort"`, fragile to anyone flipping that flag;
+            // (c) the safe path is just as ergonomic. The std::Regex branch
+            // above remains unchanged: it's non-backtracking and cannot panic.
+            //
+            // Upstream issue draft: nyquest-ops-config
+            // docs/upstream-issues/fancy-regex-replace-panic.md.
+            match re.try_replacen(text, 0, self.replacement.as_str()) {
                 Ok(cow) => {
                     let did = matches!(cow, Cow::Owned(_));
                     if did {
@@ -133,11 +127,12 @@ impl Rule {
                     }
                     (cow, did)
                 }
-                Err(_) => {
+                Err(e) => {
                     warn!(
-                        rule_id = %id_for_log,
-                        pattern = %pattern_for_log,
-                        "fancy_regex panic suppressed; rule skipped for this input"
+                        rule_id = %self.id,
+                        pattern = %self.pattern_str,
+                        error = ?e,
+                        "fancy_regex runtime error; rule no-op for this input"
                     );
                     (Cow::Borrowed(text), false)
                 }
