@@ -50,6 +50,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/dashboard", get(dashboard))
         .route("/v1/messages", post(proxy_messages))
         .route("/v1/chat/completions", post(proxy_chat_completions))
+        .route("/v2/compress", post(compress_only))
         .with_state(state)
 }
 
@@ -497,6 +498,97 @@ fn log_metrics(
         };
         state.metrics_logger.log(&m);
     }
+}
+
+// ─── /v2/compress (compress-only; no upstream forward) ───────
+
+/// Run the full compression pipeline and return the compressed request's
+/// `messages` + token counts, WITHOUT calling any model. This is what makes
+/// the Splicer cost-moat possible: compress the prompt once, then fan the
+/// optimized prompt out to N models. Honors the same `x-nyquest-*` tuning
+/// headers as the proxy endpoints so behaviour matches the inline path.
+///
+/// Input is OpenAI chat-completions shape (`{ model?, messages: [...] }`);
+/// the response is `{ messages, model, original_tokens, optimized_tokens }`.
+async fn compress_only(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    let request_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+    let start = Instant::now();
+    let header_map = headers_to_map(&headers);
+    let cache_workspace = header_map.get("x-nyquest-workspace-id").map(|s| s.as_str());
+    let cache_user = header_map.get("x-nyquest-user-id").map(|s| s.as_str());
+
+    let header_level = header_map.get("x-nyquest-level").map(|s| s.as_str());
+    let level = state.config.effective_level(header_level);
+
+    let model = body
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let openclaw_enabled = state.config.openclaw_mode
+        || header_map
+            .get("x-nyquest-openclaw")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+    let response_age_override = header_map
+        .get("x-nyquest-response-age")
+        .and_then(|v| v.parse::<usize>().ok());
+
+    let (compressed, original_tokens, optimized_tokens, comp_stats, _r_saved, _r_count) =
+        run_pipeline(
+            &body,
+            &state,
+            level,
+            openclaw_enabled,
+            response_age_override,
+            cache_workspace,
+            cache_user,
+        )
+        .await;
+
+    let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+    log_metrics(
+        &state,
+        original_tokens,
+        optimized_tokens,
+        level,
+        latency_ms,
+        &model,
+        &request_id,
+        &comp_stats,
+    );
+
+    let savings = original_tokens.saturating_sub(optimized_tokens);
+    let savings_pct = if original_tokens > 0 {
+        savings as f64 / original_tokens as f64 * 100.0
+    } else {
+        0.0
+    };
+    info!(
+        "[{}] compress-only | level={:.1} | {}→{} tokens | saved {} ({:.1}%)",
+        request_id, level, original_tokens, optimized_tokens, savings, savings_pct
+    );
+
+    // Prefer the compressed messages; fall back to the original on the
+    // (shouldn't-happen) case the pipeline dropped the field.
+    let messages = compressed
+        .get("messages")
+        .or_else(|| body.get("messages"))
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    Json(serde_json::json!({
+        "messages": messages,
+        "model": model,
+        "original_tokens": original_tokens,
+        "optimized_tokens": optimized_tokens,
+    }))
+    .into_response()
 }
 
 // ─── /v1/messages (Anthropic native) ─────────────────────────
