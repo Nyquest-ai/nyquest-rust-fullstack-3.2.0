@@ -1,6 +1,6 @@
 [package]
 name = "nyquest"
-version = "3.2.7"
+version = "3.2.8"
 edition = "2021"
 description = "Semantic Compression Proxy for LLMs — Full Rust Stack"
 authors = ["Mike <mike@nyquest.ai>"]
