@@ -6,7 +6,7 @@
 
 ### Semantic Compression Proxy for LLMs
 
-[![Version](https://img.shields.io/badge/version-3.2.0-4fd1c5?style=flat-square&logoColor=0a0b0e)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.2.8-4fd1c5?style=flat-square&logoColor=0a0b0e)](CHANGELOG.md)
 [![Rust](https://img.shields.io/badge/Rust-Full%20Stack-4fd1c5?style=flat-square&logo=rust&logoColor=0a0b0e)](https://rust-lang.org)
 [![Axum](https://img.shields.io/badge/Axum-0.8-4fd1c5?style=flat-square&logoColor=0a0b0e)](https://github.com/tokio-rs/axum)
 [![Rules](https://img.shields.io/badge/Rules-532-4fd1c5?style=flat-square&logoColor=0a0b0e)](src/compression/rules.rs)
@@ -47,6 +47,7 @@ A drop-in HTTP proxy for LLM API traffic. Clients point at `localhost:5400` inst
 - **Code-block minification** for Python, JavaScript, and shell
 - **Format optimization** — JSON → YAML / CSV conversion for tabular structures, markdown table flattening
 - **Optional semantic stage** via local Qwen 2.5 1.5B (Ollama) for system-prompt and history condensation
+- **Compress-only endpoint** (`POST /v2/compress`, since 3.2.8) — runs the full pipeline and returns the compressed messages + `original_tokens`/`optimized_tokens` **without forwarding to any model**, so a caller can compress a prompt once and reuse it across N upstream calls (e.g. multi-model consensus fan-out). The `/v1/chat/completions` and `/v1/messages` proxy endpoints compress-and-forward as before.
 
 ### Performance
 - **Zero-allocation rule misses** — `Cow<'a, str>` returns `Cow::Borrowed(text)` when no rule matches; allocates only on actual rewrites

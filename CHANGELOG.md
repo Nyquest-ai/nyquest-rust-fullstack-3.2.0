@@ -2,16 +2,36 @@
 
 All notable changes to the Nyquest compression engine. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# Changelog v3.2.3 — v3.2.6 (append to CHANGELOG.md above the v3.2.2 section)
-#
-# The four entries below match the prose density and section style of the
-# existing v3.2.0–v3.2.2 entries already in CHANGELOG.md on disk.
-# Each entry was reconstructed from the commit message body, not from
-# image metadata (the GHCR images for 3.2.3+ lost their OCI labels —
-# separate CI fix needed).
-#
-# Paste these in *above* the v3.2.2 heading so the file stays
-# newest-first.
+## [3.2.8] — 2026-06-04
+
+### Added
+- **`POST /v2/compress` — compress-only endpoint.** Runs the full compression pipeline (`run_pipeline`: auto-scale → context optimizer → OpenClaw → semantic) and returns `{messages, model, original_tokens, optimized_tokens}` **without forwarding upstream to any model**. Powers the Nyquest Splicer cost-moat: compress a prompt once, then fan the optimized prompt out to N models, so input cost drops from `N × original` to `(one compression) + N × optimized`. Honors the same `x-nyquest-*` tuning headers as the proxy endpoints. `src/server.rs::compress_only` + route registration.
+
+### Unchanged
+- Pure addition — `/v1/chat/completions` and `/v1/messages` proxy behavior, the compression pipeline, and the 532-rule set are byte-identical to 3.2.7.
+
+### Testing
+- In-build cargo test suite green (lib + integration). Container boots; `/health` reports `3.2.8`; `/v2/compress` verified end-to-end (e.g. 1108 → 988 tokens on a filler-heavy prompt).
+
+### Deployment
+- Image `ghcr.io/nyquest-ai/nyquest-engine:3.2.8` (+ `3.2`, `3`, `latest`), auto-published by the `docker-publish.yml` workflow once the GHCR package was granted Write access to the repo.
+- `engine/start.sh` default IMAGE bumped 3.2.7 → 3.2.8.
+
+---
+
+## [3.2.7] — 2026-05-29
+
+### Fixed
+- **fancy-regex `BacktrackLimitExceeded` panic eliminated at the source.** `src/compression/rules.rs` now calls `re.try_replacen(text, 0, replacement)` directly; on `Err` it logs and returns `(Cow::Borrowed(text), false)` so the rule no-ops for that input and the pipeline continues with the remaining rules. Replaces the prior `catch_unwind` containment, which couldn't work under `panic = "abort"`. Same user-visible behavior on pathological input — the panic path simply no longer exists. Closes the 2026-05-20 panic-risk item with no wait on an upstream fancy-regex fix.
+
+### Testing
+- Full in-build cargo test suite green; `/health` reports `3.2.7` on engine `:5400` and the backend's forwarded probe.
+
+### Deployment
+- Image `ghcr.io/nyquest-ai/nyquest-engine:3.2.7` + `:latest` (digest `sha256:f9e27f532c02f535f66a46a5ace26909edd63ed453ee4ab1d686ab5963268328`).
+- `engine/start.sh` default IMAGE bumped 3.2.6 → 3.2.7.
+
+---
 
 ## [3.2.6] — 2026-05-20
 
